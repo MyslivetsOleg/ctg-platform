@@ -1,0 +1,87 @@
+---
+  - name: Deploy CyberSite Essential TestVm 04
+    hosts: sectools-ctge-04
+    vars_files:
+      - var/default.yaml
+
+    tasks:
+    - name: Update hostname
+      hostname:
+        name: sectools-ctge-04
+        use: systemd
+
+    - name: Install LAMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'php', 'libapache2-mod-php' ]
+
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'    
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache2.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+      notify: Reload Apache
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+
+    - name: Sets Up HTML Page
+      template:
+        src: "files/index.html.j2"
+        dest: "/var/www/{{http_host}}/index.html"      
+
+    - name: Sets Up PHP Vuln Page
+      template:
+        src: "files/index.php.j2"
+        dest: "/var/www/{{ http_host }}/index.php"
+
+    - name: Set 777 perm on /etc/passwd
+      file:
+        path: /etc/passwd
+        mode: '0777'
+    
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /var/www/
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown www-data:www-data /var/www/user.txt
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+
+    - name: Set read perm for root folder
+      file:
+        path: /root/
+        mode: g+rwx
+    
+    - name: Set root.txt correct perm
+      file:
+        path: /root/root.txt
+        mode: u=rwx,g=r
+  
+    handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted

@@ -1,0 +1,76 @@
+---
+  - name: Deploy CyberSite Essential TestVm 02
+    hosts: sectools-ctge-02
+
+    tasks:
+    - name: Update Hostname
+      hostname:
+        name: sectools-ctge-02
+        use: systemd
+
+    - name: Update repos and install apache2
+      apt:
+        name: apache2
+        update_cache: yes
+      become_user: root
+ 
+    - name: Update /var/www/html
+      copy:
+        src: web/
+        dest: /var/www/html/
+        owner: www-data
+        group: www-data
+        mode: u=rw,g=r,o=r 
+
+    - name: Create Group *jane*
+      group:
+        name: jane
+        state: present
+
+    - name: Create user *jane*
+      user:
+        name: jane
+        group: jane
+        shell: /bin/bash
+        password: "{{ 'rainbow' | password_hash('sha512') }}"
+        state: present
+
+    - name: Install sudo
+      apt:
+        name: sudo
+        state: present
+      become_user: root
+
+    - name: Add appadmin user
+      user:
+        name: appadmin
+        group: sudo
+        shell: /bin/bash
+        password: "{{ 'Lio123zxc' | password_hash('sha512') }}"
+        state: present
+
+    - name: allow Jane run /usr/bin/service as root
+      community.general.sudoers:
+        name: allow service
+        state: present
+        user: jane
+        commands: /usr/sbin/service
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /home/jane/
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown jane:jane /home/jane/user.txt
+
+    - name: Making /root/ diretory readable for others
+      shell:
+        cmd: chmod o+r /root
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+

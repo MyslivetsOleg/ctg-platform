@@ -1,0 +1,84 @@
+---
+  - name: Deploy CyberSite Essential TestVm 03
+    hosts: sectools-ctge-03
+
+    tasks:
+    - name: Update hostname
+      hostname:
+        name: sectools-ctge-03
+        use: systemd
+
+    - name: Update repos and isntall samba
+      apt:
+        name: samba
+        update_cache: yes
+
+    - name: Copy samba conf
+      copy:
+        src: smb.conf
+        dest: /etc/samba/smb.conf
+        
+    - name: create samba share dir
+      file:
+        path: /opt/samba/public/
+        state: directory
+
+    - name: copy creds.txt to public share
+      copy:
+        src: creds.txt
+        dest: /opt/samba/public/creds.txt
+
+    - name: Restart samba service
+      service:
+        name: smbd
+        state: restarted
+
+    - name: Create Group for James user
+      group:
+        name: kate
+        state: present
+
+    - name: Create user Kate
+      user:
+        name: kate
+        group: kate
+        shell: /bin/bash
+        password: "{{ 'taylor' | password_hash('sha512') }}"
+        state: present
+
+    - name: Install sudo
+      apt:
+        name: sudo
+        state: present
+      become_user: root
+
+    - name: Add appadmin user
+      user:
+        name: appadmin
+        group: sudo
+        shell: /bin/bash
+        password: "{{ 'Lio123zxc' | password_hash('sha512') }}"
+        state: present
+
+    - name: Add SUID to /bin/bash
+      file:
+        name: /bin/bash
+        mode: +s
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /home/kate/
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown kate:kate /home/kate/user.txt
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+
+    - name: Making /root/ diretory readable for others
+      shell:
+        cmd: chmod o+r /root

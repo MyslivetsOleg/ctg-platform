@@ -1,0 +1,21 @@
+---
+  all:
+    children:
+      sectools-cse-01:
+        hosts:
+          192.168.5.20
+      sectools-cse-02:
+        hosts:
+          192.168.5.20
+      sectools-cse-03:
+        hosts:
+          192.168.5.20
+      sectools-cse-04:
+        hosts:
+          192.168.5.20
+      sectools-ctge-05:
+        hosts:
+          192.168.5.20
+      sectools-ctge-06:
+        hosts:
+          192.168.5.20

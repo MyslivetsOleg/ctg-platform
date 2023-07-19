@@ -1,0 +1,206 @@
+---
+  - name: Deploy Cyber training ground Essential TestVm 05
+    hosts: sectools-ctge-05
+    
+    tasks:
+    - name: update hostname
+      hostname:
+        name: sectools-ctge-05
+        use: systemd
+      tags:
+      - configuration
+
+    - name: install dependencies for apache 2.4.50
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: ['build-essential', 'libssl-dev', 'libexpat-dev', 'libpcre3-dev', 'libapr1-dev', 'libaprutil1-dev']
+      tags:
+      - foothold
+      - web
+
+    - name: upload apache2.4.40 to host
+      copy:
+        src: apache2_2.4.50.orig.tar.gz
+        dest: /usr/local/src/
+      tags:
+      - foothold
+      - web
+
+    - name: Extract apache into /usr/local/src/
+      unarchive:
+        src: apache2_2.4.50.orig.tar.gz
+        dest: /usr/local/src/
+      tags:
+      - foothold
+      - web
+
+    - name: Create apache root dir
+      file:
+        path: /usr/local/apache2.4.50
+        state: directory
+        mode: '0755'
+      tags:
+      - foothold
+      - web
+
+    - name: configure apache
+      shell:
+        cmd: '/usr/local/src/httpd-2.4.50/configure --prefix=/usr/local/apache2.4.50 --enable-shared=max'
+      tags:
+      - foothold
+      - web
+
+    - name: install apache2
+      shell:
+        cmd: cd /usr/local/src/httpd-2.4.50/
+      tags:
+      - foothold
+      - web
+
+    - name: install apache2
+      shell:
+        cmd: make && make install
+      tags:
+      - foothold
+      - web
+
+    - name: run apache
+      shell:
+        cmd: /usr/local/apache2.4.50/bin/apachectl start
+      tags:
+      - foothold
+      - web
+ 
+    - name: check apache2
+      shell:
+        cmd: echo $(ps -ef | grep apache2)
+      tags:
+      - foothold
+      - web
+
+    - name: update config
+      template:
+        src: "files/httpd.conf.j2"
+        dest: "/usr/local/apache2.4.50/conf/httpd.conf"
+      tags:
+      - foothold
+      - web
+
+    - name: change ownership
+      shell:
+        cmd: 'chown www-data:www-data -R /usr/local/apache2.4.50 && chown -R 775 /usr/local/apache2.4.50'
+      tags:
+      - foothold
+      - web
+
+    - name: restart apache
+      shell:
+        cmd: '/usr/local/apache2.4.50/bin/apachectl stop && /usr/local/apache2.4.50/bin/apachectl start'
+      tags:
+      - foothold
+      - web
+
+    - name: creating directories for crontab-exploit
+      file:
+        path: /opt/common-scripts
+        state: directory
+        mode: '777'
+      tags:
+      - privesc
+      - cron
+    
+    - name:
+      file:
+        path: /opt/backups
+        state: directory
+      tags:
+      - privesc
+      - cron
+
+    - name: upload scripts
+      copy:
+        src: archive-data.sh.j2
+        dest: /opt/common-scripts/archive-data.sh
+        mode: '777'
+      tags:
+      - privesc
+      - cron
+      - refresh-privesc-data
+
+    - name: add task to cron for root
+      cron:
+        name: run backups
+        job: 'sh /opt/common-scripts/archive-data.sh 2>&1 | /usr/bin/logger -t CRONOUTPUT'
+      tags:
+      - privesc
+      - cron
+  
+    - name: install rsyslog
+      apt:
+        name: rsyslog
+        state: present
+      tags:
+      - privesc
+      - cron
+
+    - name: replace line
+      lineinfile: 
+        path: /etc/rsyslog.conf 
+        regexp: '^#cron*' 
+        line: 'cron.*                          /var/log/cron.log'
+        backrefs: yes
+      tags:
+      - privesc
+      - cron
+
+    - name: add www-data to adm group
+      user:
+        name: www-data
+        groups: adm
+        append: yes
+      tags:
+      - privesc
+      - cron
+
+    - name: make cron.log readable by others
+      file:
+        path: /var/log/cron.log
+        mode: 'o+r'
+      tags:
+      - privesc
+      - cron  
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /var/www/
+      tags:
+      - flags
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown www-data:www-data /var/www/user.txt
+      tags:
+      - flags
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+      tags:
+      - flags
+
+    - name: Set read perm for root folder
+      file:
+        path: /root/
+        mode: g+rwx
+      tags:
+      - flags
+
+    - name: Set root.txt correct perm
+      file:
+        path: /root/root.txt
+        mode: u=rwx,g=r
+      tags:
+      - flags
+
+...

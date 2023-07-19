@@ -1,0 +1,154 @@
+---
+  - name: Deploy CTG Essential Box 06
+    hosts: sectools-ctge-06
+
+    vars:
+      ssh_key_filename: id_rsa_tempkey
+
+    tasks:
+    - name: update hostname
+      hostname:
+        name: sectools-ctge-06
+        use: systemd
+      tags:
+      - configuration
+
+    - name: change /etc/hosts
+      replace:
+        dest: /etc/hosts
+        regexp: '^127.0.0.1.*'
+        replace: '127.0.0.1 sectools-ctge-06'
+      tags:
+      - configuration
+
+    - name: Install Additional Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'wget', 'curl', 'python3-pip']
+      tags:
+      - configuration
+
+
+    - name: Install Apache2+PHP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'php', 'libapache2-mod-php', 'build-essential', 'libssl-dev', 'libffi-dev','python3-dev', 'cargo', 'pkg-config' ]
+      tags:
+      - web
+      - foothold
+
+    - name: install vsftpd package
+      apt:
+        name: vsftpd
+        update_cache: yes
+      tags:
+      - ftp
+      - foothold
+
+    - name: Update vsftpd conf file
+      copy:
+        src: files/vsftpd.conf
+        dest: /etc/vsftpd.conf
+        owner: root
+        group: root
+        mode: u=rw,g=r,o=r
+      tags:
+      - ftp
+      - foothold
+ 
+    - name: Restart FTP Service
+      service:
+        name: vsftpd
+        state: restarted
+      tags:
+      - ftp
+      - foothold
+
+    - name: Install bottle python package
+      ansible.builtin.pip:
+        name: cryptography
+      tags:
+      - configuration
+
+    - name: Install bottle python package
+      ansible.builtin.pip:
+        name: bcrypt
+      tags:
+      - configuration
+
+    - name: create root .ssh dir
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        mode: '0700'
+      tags:
+      - configuration
+
+    - name: generate SSH key 
+      community.crypto.openssh_keypair:
+        path: "/opt/{{ssh_key_filename}}"
+        type: rsa
+        size: 2048
+        state: present
+        force: yes
+        passphrase: password123
+        owner: root
+        mode: '776'
+      tags:
+      - ssh
+      - privesc
+
+    - name: copy ssh key to root
+      copy:
+        src: "/opt/{{ssh_key_filename}}.pub"
+        dest: "/root/.ssh/authorized_keys"
+        owner: root
+        mode: '700'
+        remote_src: true
+      tags:
+      - ssh
+      - privesc
+
+    - name: copy ssh key to root
+      copy:
+        src: "/opt/{{ssh_key_filename}}"
+        dest: "/root/.ssh/id_rsa"
+        owner: root
+        mode: '700'
+        remote_src: true
+      tags:
+      - ssh
+      - privesc
+
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /var/www/
+      tags:
+      - flags
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown www-data:www-data /var/www/user.txt
+      tags:
+      - flags
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+      tags:
+      - flags
+
+    - name: Set read perm for root folder
+      file:
+        path: /root/
+        mode: g+rwx
+      tags:
+      - flags
+
+    - name: Set root.txt correct perm
+      file:
+        path: /root/root.txt
+        mode: u=rwx,g=r
+      tags:
+      - flags

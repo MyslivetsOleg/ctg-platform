@@ -1,0 +1,92 @@
+---
+  - name: Deploy CyberTrainingGround Box 01
+    hosts: sectools-ctge-01
+
+    tasks:
+    - name: Update hostname
+      hostname:
+        name: sectools-ctge-01
+        use: systemd
+
+    - name: Update repositories cache and install vsftpd package
+      apt:
+        name: vsftpd
+        update_cache: yes
+    
+    - name: Update vsftpd conf file
+      copy:
+        src: vsftpd.conf
+        dest: /etc/vsftpd.conf
+        owner: root
+        group: root
+        mode: u=rw,g=r,o=r
+   
+    - name: Create public FTP directory (/opt/ftp/pub)   
+      file:
+        path: /opt/ftp/pub
+        state: directory      
+
+    - name: Restart FTP Service
+      service:
+        name: vsftpd
+        state: restarted
+
+    - name: Copy Foothold File with creds in ftp public dir
+      copy:
+        src: backup.txt
+        dest: /opt/ftp/pub/backup.txt
+        owner: root
+        group: root
+        mode: u=rw,g=r,o=r
+
+    - name: Create Group for James user
+      group:
+        name: james
+        state: present
+
+    - name: Create user James
+      user:
+        name: james
+        group: james
+        shell: /bin/bash
+        password: "{{ 'rebelde' | password_hash('sha512') }}"
+        state: present
+
+    - name: Install sudo
+      apt:
+        name: sudo
+        state: present
+      become_user: root
+ 
+    - name: Add appadmin user
+      user:
+        name: appadmin
+        group: sudo
+        shell: /bin/bash
+        password: "{{ 'Lio123zxc' | password_hash('sha512') }}"
+        state: present
+    
+    - name: allow James to run nano as root
+      community.general.sudoers:
+        name: allow nano
+        state: present
+        user: james
+        commands: /usr/bin/nano
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /home/james/
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown james:james /home/james/user.txt
+
+    - name: Making /root/ diretory readable for others
+      shell:
+        cmd: chmod o+r /root
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
