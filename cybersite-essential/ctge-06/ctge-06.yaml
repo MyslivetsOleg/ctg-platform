@@ -3,12 +3,14 @@
     hosts: sectools-ctge-06
 
     vars:
-      ssh_key_filename: id_rsa_tempkey
+      hostname: sectools-ctge-06
+    vars_files:
+      - vars/ctge-06-vars.yml
 
     tasks:
     - name: update hostname
       hostname:
-        name: sectools-ctge-06
+        name: "{{ hostname }}"
         use: systemd
       tags:
       - configuration
@@ -23,7 +25,7 @@
 
     - name: Install Additional Packages
       apt: name={{ item }} update_cache=yes state=latest
-      loop: [ 'wget', 'curl', 'python3-pip']
+      loop: [ 'wget', 'curl', 'python3-pip', 'python3-full', 'openssh-client']
       tags:
       - configuration
 
@@ -62,17 +64,15 @@
       - ftp
       - foothold
 
-    - name: Install bottle python package
-      ansible.builtin.pip:
-        name: cryptography
+    - name: create upload dir
+      ansible.builtin.file:
+        path: "{{ www_root }}/uploads"
+        state: directory
+        mode: '0755'
+        owner: ftp
+        group: www-data
       tags:
-      - configuration
-
-    - name: Install bottle python package
-      ansible.builtin.pip:
-        name: bcrypt
-      tags:
-      - configuration
+      - foothold
 
     - name: create root .ssh dir
       ansible.builtin.file:
@@ -92,6 +92,7 @@
         passphrase: password123
         owner: root
         mode: '776'
+        backend: "opensshbin"
       tags:
       - ssh
       - privesc
@@ -128,7 +129,7 @@
 
     - name: change user.txt ownership
       shell:
-        cmd: chown www-data:www-data /var/www/user.txt
+        cmd: chown www-data:www-data /var/www/user.txt && chmod o-r /var/www/user.txt
       tags:
       - flags
 
