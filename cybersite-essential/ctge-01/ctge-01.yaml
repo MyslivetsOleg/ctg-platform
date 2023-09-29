@@ -24,7 +24,7 @@
          
     - name: Update vsftpd conf file
       copy:
-        src: vsftpd.conf
+        src: files/vsftpd.conf
         dest: /etc/vsftpd.conf
         owner: root
         group: root
@@ -50,7 +50,7 @@
 
     - name: Copy Foothold File with creds in ftp public dir
       copy:
-        src: backup.txt
+        src: files/backup.txt
         dest: /opt/ftp/pub/backup.txt
         owner: root
         group: root
