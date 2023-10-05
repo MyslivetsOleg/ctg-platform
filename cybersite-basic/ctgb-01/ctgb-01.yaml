@@ -1,0 +1,254 @@
+---
+  - name: Deploy CyberTraining Ground Basic Stand VM#1
+    hosts: sectools-ctgb-01-a
+    tasks:
+      - name: Install auxiliary packages
+        become: true
+        become_method: sudo
+        apt: name={{ item }} update_cache=yes state=latest
+        loop: [ 'wget', 'ncat', 'curl', 'python3-pip', 'python3-full', 'openssh-client']
+        tags:
+        - configuration
+
+      - name: Install dependencies for apache 2.4.50
+        apt: name={{ item }} update_cache=yes state=latest
+        loop: ['build-essential', 'libssl-dev', 'libexpat-dev', 'libpcre3-dev', 'libapr1-dev', 'libaprutil1-dev']
+        tags:
+        - foothold
+        - web
+
+      - name: Upload apache2.4.40 to host
+        copy:
+          src: files/apache2_2.4.50.orig.tar.gz
+          dest: "{{ apache_install_dir }}"
+        tags:
+        - foothold
+        - web
+
+      - name: Extract apache into "{{apache_install_dir}}"
+        unarchive:
+          src: apache2_2.4.50.orig.tar.gz
+          dest: "{{ apache_install_dir }}"
+        tags:
+        - foothold
+        - web
+
+      - name: Create apache root dir
+        file:
+          path: /usr/local/apache2.4.50
+          state: directory
+          mode: '0755'
+        tags:
+        - foothold
+        - web
+
+      - name: Configure apache
+        shell:
+          cmd: '"{{apache_install_dir}}"httpd-2.4.50/configure --prefix=/usr/local/apache2.4.50 --enable-shared=max'
+        tags:
+        - foothold
+        - web
+
+      - name: Install apache
+        shell:
+          cmd: cd "{{apache_install_dir}}"
+        tags:
+        - foothold
+        - web
+
+      - name: Install apache
+        shell:
+          cmd: make && make install
+        tags:
+        - foothold
+        - web
+
+      - name: Run apache
+        shell:
+          cmd: /usr/local/apache2.4.50/bin/apachectl start
+        tags:
+        - foothold
+        - web
+
+      - name: Check apache2
+        shell:
+          cmd: echo $(ps -ef | grep apache2)
+        tags:
+        - foothold
+        - web
+
+      - name: Update config
+        template:
+          src: "files/httpd.conf.j2"
+          dest: "/usr/local/apache2.4.50/conf/httpd.conf"
+        tags:
+        - foothold
+        - web
+
+      - name: Change ownership of apache root dir
+        shell:
+          cmd: 'chown www-data:www-data -R /usr/local/apache2.4.50 && chown -R 775 /usr/local/apache2.4.50'
+        tags:
+        - foothold
+        - web
+
+      - name: Restart apache
+        shell:
+          cmd: '/usr/local/apache2.4.50/bin/apachectl stop && sleep 10 && /usr/local/apache2.4.50/bin/apachectl start'
+        tags:
+        - foothold
+        - web
+
+      - name: Create users
+        become: true
+        become_method: sudo  
+        user:
+          name: "{{ item }}"
+          shell: /bin/bash
+          generate_ssh_key: yes
+          ssh_key_bits: 2028
+          ssh_key_file: .ssh/id_rsa
+          password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}" 
+        loop:
+        - "{{user_one}}"
+        - "{{user_two}}"
+        tags:
+        - configuration
+        - users        
+
+      - name: Copy id_rsa to home of  {{user_two}}
+        copy:
+          src: /home/{{user_two}}/.ssh/id_rsa
+          dest: /home/{{user_two}}/
+          owner: "{{user_two}}"
+          group: "{{user_two}}"
+          mode: '0644'
+          remote_src: true
+        tags:
+        - configuration
+        - users
+
+      - name: create user.txt flag
+        shell:
+          cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+          chdir: /home/{{user_two}}
+        tags:
+        - flags
+
+      - name: change user.txt ownership
+        shell:
+          cmd: chown "{{user_two}}":"{{user_two}}" /home/"{{user_two}}"/user.txt
+        tags:
+        - flags
+
+      - name: create root.txt flag
+        shell:
+          cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+          chdir: /root/
+        tags:
+        - flag
+
+      - name: Fetch key from machine 
+        fetch:
+          src: /home/{{user_two}}/.ssh/id_rsa.pub
+          dest: /tmp/{{user_two}}_id_rsa.pub
+          flat: yes
+        tags:
+        - configuration
+
+      - name: change root password
+        user:
+          name: root
+          state: present
+          password: "{{ 'r7ZYDT0s' | password_hash('sha512')}}"
+          update_password: always
+        tags:
+        - configuration
+        - privesc
+
+  - name: Configure second machine
+    hosts: sectools-ctgb-01-b
+    tasks:
+      - name: Create users
+        become: true
+        become_method: sudo
+        user:
+          name: "{{ item }}"
+          shell: /bin/bash
+          password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}"
+        loop:
+        - "{{user_one}}"
+        - "{{user_two}}"
+        tags:
+        - configuration
+        - users
+
+      - name: Copy key to second machine
+        copy:
+          src: /tmp/{{user_two}}_id_rsa.pub
+          dest: "/tmp/remote-id_rsa.pub" 
+        tags:
+        - configuration
+        - users
+
+      - name: create {{user_two}} .ssh dir
+        file:
+          path: /home/{{user_two}}/.ssh
+          owner: "{{user_two}}"
+          group: "{{user_two}}"
+          mode: '0700'
+          state: directory
+        tags:
+        - configuration
+        - users
+
+      - name: add the public key into Authorized_keys file to enable Key Auth
+        shell: "cat /tmp/remote-id_rsa.pub >> /home/{{user_two}}/.ssh/authorized_keys"
+        tags:
+        - configuration
+        - users
+
+      - name: install auxiliury packages
+        apt:
+          name: pexec
+          state: latest
+          update_cache: yes
+        tags:
+        - configuration
+    
+      - name: add suid bit to 'less' binary
+        file:
+          path: "{{item}}"
+          mode: u+s
+        loop: ['/usr/bin/less','/usr/bin/pexec']
+        tags:
+        - privesc
+
+      - name: copy note.txt to root folder
+        copy:
+          src: files/note.txt
+          dest: /root/
+        tags:
+        - privesc
+        - configuration     
+
+      - name: create user.txt flag
+        shell:
+          cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+          chdir: /home/{{user_two}}
+        tags:
+        - flags
+
+      - name: change user.txt ownership
+        shell:
+          cmd: chown "{{user_two}}":"{{user_two}}" /home/"{{user_two}}"/user.txt
+        tags:
+        - flags
+
+      - name: create root.txt flag
+        shell:
+          cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+          chdir: /root/
+        tags:
+        - flag
+
