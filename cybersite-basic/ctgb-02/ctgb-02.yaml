@@ -1,0 +1,119 @@
+---
+  - name: Deploy CyberSite Basic Stand #2
+    hosts: sectools-ctgb-02-a
+    vars_files:
+      - var/default.yaml
+
+    tasks:
+    - name: Install LAMP Packages
+      apt: name={{ item }} update_cache=yes state=latest
+      loop: [ 'apache2', 'php', 'libapache2-mod-php' ]
+      tags:
+      - configuration
+
+    - name: Create document root
+      file:
+        path: "/var/www/{{ http_host }}"
+        state: directory
+        owner: "{{ app_user }}"
+        mode: '0755'
+
+    - name: Set up Apache virtualhost
+      template:
+        src: "files/apache2.conf.j2"
+        dest: "/etc/apache2/sites-available/{{ http_conf }}"
+      notify: Reload Apache
+
+    - name: Enable new site
+      shell: /usr/sbin/a2ensite {{ http_conf }}
+      notify: Reload Apache
+
+    - name: Disable default Apache site
+      shell: /usr/sbin/a2dissite 000-default.conf
+      when: disable_default
+      notify: Reload Apache
+ 
+    - name: Sets Up HTML Page
+      template:
+        src: "files/index.html.j2"
+        dest: "/var/www/{{http_host}}/index.html"
+
+    - name: Sets Up PHP Vuln Page
+      template:
+        src: "files/index.php.j2"
+        dest: "/var/www/{{ http_host }}/index.php"
+
+    - name: Create user "{{user_two}}"
+      become: true
+      become_method: sudo
+      user:
+        name: "{{ user_two }}"
+        shell: /bin/bash
+        password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}"
+      tags:
+      - configuration    
+
+    - name: Create user "{{user_one}}"
+      become: true
+      become_method: sudo
+      user:
+        name: "{{user_two}}"
+        shell: /bin/bash
+        password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}"
+      tags:
+      - configuration
+    
+    - name: Create user "{{user_three}}"
+      become: true
+      become_method: sudo
+      user:
+        name: "{{user_three}}"
+        shell: /bin/bash
+        password: "{{ 'password123' | password_hash('sha512') }}"
+      tags:
+      - configuration
+   
+    - name: Copy note.txt to "{{user_two}}" home dir
+      copy:
+        src: files/note.txt
+        dest: /home/"{{user_two}}"/
+        owner: "{{user_two}}"
+        mode: '0740'
+      tags:
+      - configuration
+      - foothold
+
+    - name: Create a backup of "{{user_two}}" home dir
+      archive:
+        path:
+        -  /home/"{{user_two}}"/*
+        dest: /opt/backup.tar.gz
+        format: gz
+        owner: "{{user_two}}"
+        mode: '0777'
+      tags:
+      - configuration
+      - foothold
+
+    - name: Make "{{user_three}}"  an admin on this machine
+      sudoers:
+        name: allow "{{user_three}}" to run all commands w//o password
+        user: "{{user_three}}"
+        state: present
+        commands: ALL
+        nopasswd: true
+      tags:
+      - configuration
+      - privesc
+
+    handlers:
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
+
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted
+

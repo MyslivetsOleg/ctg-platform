@@ -1,0 +1,7 @@
+---
+  mysql_root_password: "mysql_root_password"
+  app_user: "www-data"
+  http_host: "cse04site.sectools"
+  http_conf: "cse04site.conf"
+  http_port: "80"
+  disable_default: true

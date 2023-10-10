@@ -1,0 +1,27 @@
+---
+  all:
+    children:
+      sectools-ctge-01:
+        hosts:
+          10.31.52.70
+      sectools-ctge-02:
+        hosts:
+          10.31.52.73
+      sectools-ctge-03:
+        hosts:
+          10.31.52.74
+      sectools-ctge-04:
+        hosts:
+          10.31.52.78
+      sectools-ctge-05:
+        hosts:
+          10.31.52.71
+      sectools-ctge-06:
+        hosts:
+          10.31.52.83
+      sectools-ctgb-01:
+        hosts:
+          sectools-ctgb-01-[a:b]
+      sectools-ctgb-02:
+        hosts:
+          sectools-ctgb-02-[a:b]
