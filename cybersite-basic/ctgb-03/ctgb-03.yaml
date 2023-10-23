@@ -1,0 +1,165 @@
+---
+  - name: Deploy CTG Basic [03-A] VM
+    hosts: sectools-ctgb-03-a
+    tasks:
+    - name: Update repos and isntall samba
+      apt:
+        name: samba
+        update_cache: yes
+      tags:
+      - configuration
+
+    - name: Copy samba conf
+      copy:
+        src: files/smb.conf
+        dest: /etc/samba/smb.conf
+      tags:
+      - configuration
+
+    - name: create samba share dir
+      file:
+        path: /opt/samba/public/
+        state: directory
+      tags:
+      - configuration
+      notify:
+      - Restart SMB
+
+    - name: copy creds.txt to public share
+      template:
+        src: templates/creds.j2
+        dest: /opt/samba/public/creds.txt
+      tags:
+      - configuration
+      - foothold
+
+    - name: Create user "{{user_two}}"
+      user:
+        name: "{{ user_two }}"
+        shell: /bin/bash
+        password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}"
+      tags:
+      - configuration
+      - users
+
+    - name: Create user "{{user_one}}"
+      user:
+        name: "{{user_one}}"
+        shell: /bin/bash
+        password:  "{{ user_one_password_vm_a | password_hash('sha512') }}"
+      tags:
+      - configuration
+      - users
+
+    - name: Add python binary SUID
+      file:
+        path: /usr/bin/python3
+        mode: 'u+s'
+      tags:
+      - configuration
+      - privesc      
+
+    - name: Add note.txt to {{user_two}} home dir
+      template:
+        src: templates/note.j2
+        dest: /home/{{user_two}}/note.txt 
+        group: "{{user_two}}"
+        mode: '600'   
+      tags:
+      - configuration
+      - postenum
+      
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /home/{{user_one}}/
+      tags:
+      - flags
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown {{user_one}}:{{user_one}} /home/{{user_one}}/user.txt
+      tags:
+      - flags
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+      tags:
+      - flags
+
+
+    handlers:
+      - name: Restart SMB
+        service:
+          name: smbd
+          state: restarted
+   
+  - name: Deploy CTG Basic [03-B] VM
+    hosts: sectools-ctgb-03-b
+    tasks:
+    - name: Create user "{{user_one}}"
+      user:
+        name: "{{ user_one }}"
+        shell: /bin/bash
+        password: "{{ lookup('password', '/dev/null length=15 chars=ascii_letters encrypt=md5_crypt') }}"
+      tags:
+      - configuration
+      - users
+
+    - name: Create user "{{user_two}}"
+      user:
+        name: "{{user_two}}"
+        shell: /bin/bash
+        password:  "{{ user_two_password_vm_b | password_hash('sha512') }}"
+      tags:
+      - configuration
+      - users
+
+    - name: creating directories for crontab-exploit
+      file:
+        path: /opt/common-scripts
+        state: directory
+        mode: '777'
+      tags:
+      - privesc
+      - cron
+
+    - name: upload scripts
+      copy:
+        src: files/test_monitor_script.sh
+        dest: /opt/common-scripts/
+        mode: '777'
+      tags:
+      - privesc
+      - cron
+      - refresh-privesc-data
+
+    - name: add task to cron for root
+      cron:
+        name: run monitor script
+        job: 'sh /opt/common-scripts/test_monitor_script.sh'
+      tags:
+      - privesc
+      - cron
+
+    - name: create user.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > user.txt
+        chdir: /home/{{user_two}}/
+      tags:
+      - flags
+
+    - name: change user.txt ownership
+      shell:
+        cmd: chown {{user_two}}:{{user_two}} /home/{{user_two}}/user.txt
+      tags:
+      - flags
+
+    - name: create root.txt flag
+      shell:
+        cmd: echo "sectools{$(cat /dev/urandom | base64 | head -c 32)}" > root.txt
+        chdir: /root/
+      tags:
+      - flags

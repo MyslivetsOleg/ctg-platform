@@ -1,0 +1,40 @@
+---
+  - name: Deploy CTG Basic [03-A] VM
+    hosts: sectools-ctgb-03-a
+    tasks:
+    - name: Update repos and isntall samba
+      apt:
+        name: samba
+        update_cache: yes
+      tags:
+      - configuration
+
+    - name: Copy samba conf
+      copy:
+        src: files/smb.conf
+        dest: /etc/samba/smb.conf
+      tags:
+      - configuration
+
+    - name: create samba share dir
+      file:
+        path: /opt/samba/public/
+        state: directory
+      tags:
+      - configuration
+      notify:
+      - Restart SMB
+
+    - name: copy creds.txt to public share
+      copy:
+        src: files/creds.txt
+        dest: /opt/samba/public/creds.txt
+      tags:
+      - configuration
+      - foothold
+
+    handlers:
+      - name: Restart SMB
+        service:
+          name: smb
+          state: restarted
